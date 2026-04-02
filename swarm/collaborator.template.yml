@@ -8,8 +8,8 @@ version: "3.9"
 # =============================================================================
 
 networks:
-  traefik_public:
-    external: true            # rede compartilhada com Traefik
+  network_public:
+    external: true            # rede do Traefik (mesma do drome-web-php)
 
 volumes:
   config:
@@ -33,7 +33,7 @@ services:
     command: ["node", "openclaw.mjs", "gateway"]
 
     networks:
-      - traefik_public
+      - network_public
 
     volumes:
       - config:/home/node/.openclaw
@@ -87,9 +87,16 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.openclaw-{{NAME}}.rule=Host(`{{SUBDOMAIN}}`)"
-        - "traefik.http.routers.openclaw-{{NAME}}.entrypoints=websecure"
-        - "traefik.http.routers.openclaw-{{NAME}}.tls.certresolver=letsencrypt"
+        - "traefik.http.routers.openclaw-{{NAME}}.entrypoints=web"
+        - "traefik.http.middlewares.openclaw-{{NAME}}-redirect.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.openclaw-{{NAME}}-redirect.redirectscheme.permanent=true"
+        - "traefik.http.routers.openclaw-{{NAME}}.middlewares=openclaw-{{NAME}}-redirect@docker"
+        - "traefik.http.routers.openclaw-{{NAME}}-secure.rule=Host(`{{SUBDOMAIN}}`)"
+        - "traefik.http.routers.openclaw-{{NAME}}-secure.entrypoints=websecure"
+        - "traefik.http.routers.openclaw-{{NAME}}-secure.tls=true"
+        - "traefik.http.routers.openclaw-{{NAME}}-secure.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.openclaw-{{NAME}}-secure.service=openclaw-{{NAME}}"
         - "traefik.http.services.openclaw-{{NAME}}.loadbalancer.server.port=18789"
         - "traefik.http.middlewares.openclaw-{{NAME}}-rl.ratelimit.average=30"
         - "traefik.http.middlewares.openclaw-{{NAME}}-rl.ratelimit.burst=50"
-        - "traefik.http.routers.openclaw-{{NAME}}.middlewares=openclaw-{{NAME}}-rl"
+        - "traefik.http.routers.openclaw-{{NAME}}-secure.middlewares=openclaw-{{NAME}}-rl"

@@ -9,10 +9,10 @@ version: "3.9"
 networks:
   openclaw_internal:
     driver: overlay
-    internal: true           # isolado, sem acesso direto à internet
+    internal: true
     attachable: false
-  traefik_public:
-    external: true           # rede pública gerenciada pelo Traefik (crie antes)
+  network_public:
+    external: true           # rede do Traefik (mesma do drome-web-php)
 
 volumes:
   openclaw_config:
@@ -53,7 +53,7 @@ services:
 
     networks:
       - openclaw_internal
-      - traefik_public        # exposto via Traefik com TLS
+      - network_public
 
     volumes:
       - openclaw_config:/home/node/.openclaw
@@ -118,16 +118,24 @@ services:
         parallelism: 1
         delay: 10s
       labels:
-        # Traefik – ajuste o domínio e o entrypoint conforme seu setup
         - "traefik.enable=true"
-        - "traefik.http.routers.openclaw.rule=Host(`openclaw.seudominio.com`)"
-        - "traefik.http.routers.openclaw.entrypoints=websecure"
-        - "traefik.http.routers.openclaw.tls.certresolver=letsencrypt"
+        # HTTP → HTTPS redirect (mesmo padrão do drome-web-php)
+        - "traefik.http.routers.openclaw.rule=Host(`openclaw.drome.com.br`)"
+        - "traefik.http.routers.openclaw.entrypoints=web"
+        - "traefik.http.middlewares.openclaw-redirect.redirectscheme.scheme=https"
+        - "traefik.http.middlewares.openclaw-redirect.redirectscheme.permanent=true"
+        - "traefik.http.routers.openclaw.middlewares=openclaw-redirect@docker"
+        # HTTPS com TLS
+        - "traefik.http.routers.openclaw-secure.rule=Host(`openclaw.drome.com.br`)"
+        - "traefik.http.routers.openclaw-secure.entrypoints=websecure"
+        - "traefik.http.routers.openclaw-secure.tls=true"
+        - "traefik.http.routers.openclaw-secure.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.openclaw-secure.service=openclaw"
         - "traefik.http.services.openclaw.loadbalancer.server.port=18789"
-        # Middleware: rate limit + auth básico (opcional)
-        - "traefik.http.routers.openclaw.middlewares=openclaw-ratelimit"
+        # Rate limit
         - "traefik.http.middlewares.openclaw-ratelimit.ratelimit.average=30"
         - "traefik.http.middlewares.openclaw-ratelimit.ratelimit.burst=50"
+        - "traefik.http.routers.openclaw-secure.middlewares=openclaw-ratelimit"
 
     # Proteção extra de capabilities do container
     # Nota: Docker Swarm não suporta "cap_drop" diretamente; use security_opt
