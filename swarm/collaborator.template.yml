@@ -1,0 +1,95 @@
+version: "3.9"
+
+# =============================================================================
+# OpenClaw – Stack por colaborador
+# Gerado por add-collaborator.sh – não edite manualmente
+# Colaborador : {{NAME}}
+# Subdomínio  : {{SUBDOMAIN}}
+# =============================================================================
+
+networks:
+  traefik_public:
+    external: true            # rede compartilhada com Traefik
+
+volumes:
+  config:
+    driver: local             # isolado por stack: openclaw_{{NAME}}_config
+  workspace:
+    driver: local             # isolado por stack: openclaw_{{NAME}}_workspace
+
+secrets:
+  {{NAME}}_gateway_token:
+    external: true            # gerado por add-collaborator.sh
+  shared_anthropic_api_key:
+    external: true            # compartilhado (criado pelo deploy.sh principal)
+  shared_openrouter_api_key:
+    external: true            # compartilhado
+
+services:
+
+  gateway:
+    image: ${OPENCLAW_IMAGE:-openclaw-swarm:local}
+    entrypoint: ["/entrypoint.sh"]
+    command: ["node", "openclaw.mjs", "gateway"]
+
+    networks:
+      - traefik_public
+
+    volumes:
+      - config:/home/node/.openclaw
+      - workspace:/home/node/.openclaw/workspace
+
+    secrets:
+      - source: {{NAME}}_gateway_token
+        target: openclaw_gateway_token
+      - source: shared_anthropic_api_key
+        target: anthropic_api_key
+      - source: shared_openrouter_api_key
+        target: openrouter_api_key
+
+    environment:
+      NODE_ENV: production
+      OPENCLAW_TZ: America/Sao_Paulo
+      OPENCLAW_DISABLE_BONJOUR: "true"
+      OPENCLAW_SANDBOX: "1"
+      # Identidade do colaborador (usada no SOUL.md inicial)
+      OPENCLAW_USER_NAME: "{{NAME}}"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18789/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.0"         # cada colaborador usa menos que a instância principal
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.openclaw-{{NAME}}.rule=Host(`{{SUBDOMAIN}}`)"
+        - "traefik.http.routers.openclaw-{{NAME}}.entrypoints=websecure"
+        - "traefik.http.routers.openclaw-{{NAME}}.tls.certresolver=letsencrypt"
+        - "traefik.http.services.openclaw-{{NAME}}.loadbalancer.server.port=18789"
+        - "traefik.http.middlewares.openclaw-{{NAME}}-rl.ratelimit.average=30"
+        - "traefik.http.middlewares.openclaw-{{NAME}}-rl.ratelimit.burst=50"
+        - "traefik.http.routers.openclaw-{{NAME}}.middlewares=openclaw-{{NAME}}-rl"

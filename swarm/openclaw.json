@@ -1,0 +1,131 @@
+{
+  // =============================================================================
+  // openclaw.json – Configuração principal (JSON5)
+  // Nenhuma credencial aqui: use Docker Secrets + entrypoint.sh
+  // =============================================================================
+
+  // ── Gateway ──────────────────────────────────────────────────────────────────
+  gateway: {
+    mode: "local",
+    bind: "loopback",         // SEGURANÇA: nunca expor sem proxy reverso com TLS
+    port: 18789,
+    auth: {
+      mode: "token",          // token é injetado via OPENCLAW_GATEWAY_TOKEN
+    },
+    controlUi: {
+      origins: [],            // sem acesso externo ao painel de controle
+    },
+  },
+
+  // ── Modelos – Roteamento por Tier (economia de tokens) ──────────────────────
+  //
+  //  Tier 3 – GRATUITO via OpenRouter (heartbeats, classificação, queries simples)
+  //    • gemini-2.0-flash-exp:free  – rápido, multilingual, bom contexto
+  //    • llama-3.1-8b:free          – fallback open-source
+  //  Tier 2 – Claude Sonnet 4.6    – uso geral, padrão (~55% das requisições)
+  //  Tier 1 – Claude Opus 4.6      – complexidade alta (/model opus, ~15%)
+  //
+  //  OpenRouter: crie conta gratuita em openrouter.ai e adicione o secret
+  //  OPENROUTER_API_KEY. Os modelos com ":free" têm rate limit mas custo zero.
+  //
+  //  Economia estimada: praticamente $0 para Tier 3 vs ~$8/mês com Haiku
+  // ─────────────────────────────────────────────────────────────────────────────
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4-6",              // Tier 2 – padrão
+        fallbacks: [
+          "openrouter/google/gemini-2.0-flash-exp:free",     // Tier 3 – gratuito
+          "openrouter/meta-llama/llama-3.1-8b-instruct:free",// Tier 3 – fallback gratuito
+        ],
+      },
+
+      // Catálogo e aliases – só modelos listados aqui são permitidos
+      models: {
+        "anthropic/claude-opus-4-6":                          { alias: "opus" },
+        "anthropic/claude-sonnet-4-6":                        { alias: "sonnet" },
+        "openrouter/google/gemini-2.0-flash-exp:free":        { alias: "gemini" },
+        "openrouter/meta-llama/llama-3.1-8b-instruct:free":   { alias: "llama" },
+        "openrouter/mistralai/mistral-7b-instruct:free":      { alias: "mistral" },
+      },
+
+      // Heartbeat totalmente gratuito via OpenRouter
+      heartbeat: {
+        every: "30m",
+        model: "openrouter/google/gemini-2.0-flash-exp:free",
+        target: "last",
+      },
+
+      // Subagentes paralelos (tarefas secundárias) usam Sonnet
+      subagents: {
+        model: "anthropic/claude-sonnet-4-6",
+        maxConcurrent: 2,
+        archiveAfterMinutes: 60,
+      },
+
+      // Imagens: Gemini free tem visão; fallback pago só se necessário
+      imageModel: {
+        primary: "openrouter/google/gemini-2.0-flash-exp:free",
+        fallbacks: ["anthropic/claude-sonnet-4-6"],
+      },
+
+      // Limite de contexto (reduz tokens desnecessários)
+      contextTokens: 100000,
+
+      // Sandbox: executa ferramentas em container isolado
+      sandbox: {
+        mode: "all",          // "all" = máxima segurança; "non-main" = intermediário
+      },
+    },
+  },
+
+  // ── Sessões ──────────────────────────────────────────────────────────────────
+  session: {
+    dmScope: "per-channel-peer",  // cada usuário tem seu próprio contexto
+    resetMode: "idle",
+    idleResetMinutes: 120,
+  },
+
+  // ── Ferramentas – Princípio do mínimo privilégio ──────────────────────────
+  tools: {
+    profile: "messaging",         // perfil conservador (menos ferramentas expostas)
+    deny: [
+      "group:runtime",            // sem execução de código arbitrário por padrão
+      "group:fs",                 // sem acesso ao sistema de arquivos
+      "sessions_spawn",
+      "sessions_send",
+    ],
+    exec: {
+      security: "deny",           // proíbe exec de comandos shell
+      ask: "always",              // qualquer exceção requer confirmação
+    },
+    elevated: {
+      enabled: false,             // ferramentas elevadas desativadas
+    },
+  },
+
+  // ── Canais – Exemplo com Telegram ────────────────────────────────────────
+  // Remova ou adicione canais conforme sua necessidade
+  // Tokens são injetados via variáveis de ambiente (não ficam aqui)
+  channels: {
+    telegram: {
+      enabled: true,
+      dmPolicy: "pairing",        // SEGURANÇA: requer pareamento explícito
+      groups: {
+        "*": {
+          requireMention: true,   // só responde quando mencionado em grupos
+          enabled: false,         // grupos desativados por padrão
+        },
+      },
+    },
+  },
+
+  // ── Automações ───────────────────────────────────────────────────────────
+  automation: {
+    // Cron jobs usam Haiku para economizar
+    jobs: [],
+    webhooks: {
+      enabled: false,
+    },
+  },
+}

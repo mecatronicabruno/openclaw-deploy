@@ -1,0 +1,128 @@
+version: "3.9"
+
+# =============================================================================
+# OpenClaw – Docker Swarm Stack
+# Segurança: Docker Secrets para credenciais, bind loopback, sandbox ativo
+# Economia de tokens: roteamento por tier (Haiku → Sonnet → Opus)
+# =============================================================================
+
+networks:
+  openclaw_internal:
+    driver: overlay
+    internal: true           # isolado, sem acesso direto à internet
+    attachable: false
+  traefik_public:
+    external: true           # rede pública gerenciada pelo Traefik (crie antes)
+
+volumes:
+  openclaw_config:
+    driver: local
+  openclaw_workspace:
+    driver: local
+
+secrets:
+  openclaw_gateway_token:
+    external: true           # docker secret create openclaw_gateway_token -
+  # Claude – API Key (não expira – console.anthropic.com/settings/api-keys)
+  anthropic_api_key:
+    external: true
+  # OpenRouter – gratuito para modelos :free (openrouter.ai)
+  openrouter_api_key:
+    external: true
+  openai_api_key:
+    external: true           # opcional
+  telegram_bot_token:
+    external: true           # opcional
+
+configs:
+  openclaw_config_json:
+    file: ./openclaw.json    # configuração principal (não contém segredos)
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Gateway principal
+  # ---------------------------------------------------------------------------
+  gateway:
+    image: ${OPENCLAW_IMAGE:-openclaw-swarm:local}
+    entrypoint: ["/entrypoint.sh"]
+    command: ["node", "openclaw.mjs", "gateway"]
+
+    networks:
+      - openclaw_internal
+      - traefik_public        # exposto via Traefik com TLS
+
+    volumes:
+      - openclaw_config:/home/node/.openclaw
+      - openclaw_workspace:/home/node/.openclaw/workspace
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # só se sandbox ativo
+
+    configs:
+      - source: openclaw_config_json
+        target: /home/node/.openclaw/openclaw.json
+        uid: "1000"
+        gid: "1000"
+        mode: 0400            # somente leitura pelo dono
+
+    secrets:
+      - openclaw_gateway_token
+      - anthropic_api_key
+      - openrouter_api_key
+      - openai_api_key
+      - telegram_bot_token
+
+    # O entrypoint.sh carrega os secrets como variáveis de ambiente
+    # Nenhuma credencial fica em texto plano no stack file
+    environment:
+      - NODE_ENV=production
+      - OPENCLAW_TZ=America/Sao_Paulo
+      - OPENCLAW_DISABLE_BONJOUR=true
+      - OPENCLAW_SANDBOX=1
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18789/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager   # ou específico: node.labels.openclaw == true
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        delay: 15s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      labels:
+        # Traefik – ajuste o domínio e o entrypoint conforme seu setup
+        - "traefik.enable=true"
+        - "traefik.http.routers.openclaw.rule=Host(`openclaw.seudominio.com`)"
+        - "traefik.http.routers.openclaw.entrypoints=websecure"
+        - "traefik.http.routers.openclaw.tls.certresolver=letsencrypt"
+        - "traefik.http.services.openclaw.loadbalancer.server.port=18789"
+        # Middleware: rate limit + auth básico (opcional)
+        - "traefik.http.routers.openclaw.middlewares=openclaw-ratelimit"
+        - "traefik.http.middlewares.openclaw-ratelimit.ratelimit.average=30"
+        - "traefik.http.middlewares.openclaw-ratelimit.ratelimit.burst=50"
+
+    # Proteção extra de capabilities do container
+    # Nota: Docker Swarm não suporta "cap_drop" diretamente; use security_opt
+    # para ambientes Kubernetes adicione securityContext equivalente

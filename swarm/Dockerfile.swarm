@@ -1,0 +1,20 @@
+# =============================================================================
+# Dockerfile.swarm – Wrapper sobre a imagem oficial do OpenClaw
+# Adiciona apenas o entrypoint de secrets; sem modificar a lógica da app
+# =============================================================================
+FROM ghcr.io/openclaw/openclaw:latest
+
+USER root
+
+# Copia e configura o entrypoint de secrets
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 500 /entrypoint.sh && chown node:node /entrypoint.sh
+
+# Garante que wget existe para o healthcheck
+RUN apt-get update -qq && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+
+USER node
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["node", "openclaw.mjs", "gateway"]
