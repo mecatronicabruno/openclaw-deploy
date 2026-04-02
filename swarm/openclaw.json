@@ -13,7 +13,10 @@
       mode: "token",          // token é injetado via OPENCLAW_GATEWAY_TOKEN
     },
     controlUi: {
-      allowedOrigins: ["https://openclaw.drome.com.br"],
+      allowedOrigins: [
+        "https://openclaw.drome.com.br",
+        "https://*.openclaw.drome.com.br",
+      ],
     },
   },
 
