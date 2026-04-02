@@ -7,14 +7,12 @@
   // ── Gateway ──────────────────────────────────────────────────────────────────
   gateway: {
     mode: "local",
-    bind: "loopback",         // SEGURANÇA: nunca expor sem proxy reverso com TLS
+    bind: "lan",              // exposto via Traefik com TLS — loopback bloquearia o proxy
     port: 18789,
     auth: {
       mode: "token",          // token é injetado via OPENCLAW_GATEWAY_TOKEN
     },
-    controlUi: {
-      origins: [],            // sem acesso externo ao painel de controle
-    },
+    controlUi: {},
   },
 
   // ── Modelos – Roteamento por Tier (economia de tokens) ──────────────────────
@@ -82,8 +80,6 @@
   // ── Sessões ──────────────────────────────────────────────────────────────────
   session: {
     dmScope: "per-channel-peer",  // cada usuário tem seu próprio contexto
-    resetMode: "idle",
-    idleResetMinutes: 120,
   },
 
   // ── Ferramentas – Princípio do mínimo privilégio ──────────────────────────
@@ -120,12 +116,4 @@
     },
   },
 
-  // ── Automações ───────────────────────────────────────────────────────────
-  automation: {
-    // Cron jobs usam Haiku para economizar
-    jobs: [],
-    webhooks: {
-      enabled: false,
-    },
-  },
 }
