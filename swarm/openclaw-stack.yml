@@ -22,17 +22,20 @@ volumes:
 
 secrets:
   openclaw_gateway_token:
-    external: true           # docker secret create openclaw_gateway_token -
-  # Claude – API Key (não expira – console.anthropic.com/settings/api-keys)
+    external: true
   anthropic_api_key:
     external: true
-  # OpenRouter – gratuito para modelos :free (openrouter.ai)
   openrouter_api_key:
     external: true
-  openai_api_key:
-    external: true           # opcional
-  telegram_bot_token:
-    external: true           # opcional
+  # Secrets opcionais: descomente apenas os que você criou no deploy.sh
+  # openai_api_key:
+  #   external: true
+  # telegram_bot_token:
+  #   external: true
+  # discord_bot_token:
+  #   external: true
+  # slack_bot_token:
+  #   external: true
 
 configs:
   openclaw_config_json:
@@ -68,8 +71,11 @@ services:
       - openclaw_gateway_token
       - anthropic_api_key
       - openrouter_api_key
-      - openai_api_key
-      - telegram_bot_token
+      # Descomente conforme os secrets opcionais que você criou:
+      # - openai_api_key
+      # - telegram_bot_token
+      # - discord_bot_token
+      # - slack_bot_token
 
     # O entrypoint.sh carrega os secrets como variáveis de ambiente
     # Nenhuma credencial fica em texto plano no stack file
